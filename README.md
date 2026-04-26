@@ -1,1 +1,0 @@
-# crystal-symmetry-puzzle

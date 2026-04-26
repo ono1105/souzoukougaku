@@ -80,6 +80,7 @@
       <div id="quotient-list">
         <div class="loading">点群を選んで読み込んでください</div>
       </div>
+      <button class="apply-btn" id="apply-btn" disabled>適用  Enter</button>
     </div>
 
     <div class="sidebar-section">
@@ -107,36 +108,43 @@
 
 <script type="module">
 import { CrystalViewer } from './js/viewer.js';
+import { Sidebar }       from './js/sidebar.js';
 
 const API = 'http://localhost:5000/api';
 
 // ── DOM 参照 ─────────────────────────────────────────────────
 const pgSelect    = document.getElementById('pg-select');
 const modeSelect  = document.getElementById('mode-select');
-const btnLoad     = document.getElementById('btn-load');
-const btnSymAll   = document.getElementById('btn-sym-all');
-const btnSymNone  = document.getElementById('btn-sym-none');
-const btnResetCam = document.getElementById('btn-reset-cam');
 const headerGroup = document.getElementById('header-group');
-const quotientList= document.getElementById('quotient-list');
-const factorsList = document.getElementById('factors-list');
 const structInfo  = document.getElementById('struct-info');
-const progressPath= document.getElementById('progress-path');
 
 // ── Viewer 初期化 ────────────────────────────────────────────
-const container = document.getElementById('viewer-container');
-const viewer = new CrystalViewer(container);
+const viewer = new CrystalViewer(document.getElementById('viewer-container'));
+
+// ── Sidebar 初期化 ────────────────────────────────────────────
+const sidebar = new Sidebar({
+  progressEl:     document.getElementById('progress-path'),
+  quotientListEl: document.getElementById('quotient-list'),
+  factorsListEl:  document.getElementById('factors-list'),
+  applyBtnEl:     document.getElementById('apply-btn'),
+  onQuotientSelect: (idx) => {
+    // 選択時に対称要素をプレビュー表示
+    const q = sidebar.getSelected();
+    if (q) viewer.highlightSymmetryByOpTypes(q.op_types ?? []);
+  },
+  onApply:       () => applySelected(),
+  onHoverEnter:  (q) => viewer.highlightSymmetryByOpTypes(q.op_types ?? []),
+  onHoverLeave:  ()  => viewer.hideAllSymmetry(),
+});
 
 // ── セッション状態 ───────────────────────────────────────────
-let sessionId = null;
-let currentGroup = 'C3v';
-let availableQuotients = [];
-let selectedQuotientIdx = -1;
+let sessionId  = null;
+let animSpeed  = 1.0;
 
 // ── 点群リスト読み込み ────────────────────────────────────────
 async function loadGroupList() {
   try {
-    const res = await fetch(`${API}/groups`);
+    const res    = await fetch(`${API}/groups`);
     const groups = await res.json();
     groups.forEach(g => {
       const opt = document.createElement('option');
@@ -145,7 +153,6 @@ async function loadGroupList() {
       if (g.name === 'C3v') opt.selected = true;
       pgSelect.appendChild(opt);
     });
-    // 初期ロード
     await loadStructureAndSession('C3v', 'abstract');
   } catch (e) {
     showError(`APIサーバーに接続できません: ${e.message}\n` +
@@ -153,28 +160,18 @@ async function loadGroupList() {
   }
 }
 
-// ── 構造データ読み込み ────────────────────────────────────────
+// ── 構造 + セッション読み込み ─────────────────────────────────
 async function loadStructureAndSession(pg, mode) {
-  currentGroup = pg;
   headerGroup.textContent = pg;
+  viewer.hideAllSymmetry();
 
   // 構造データ
   try {
-    const res = await fetch(`${API}/structures/${pg}?mode=${mode}`);
+    const res    = await fetch(`${API}/structures/${pg}?mode=${mode}`);
     if (!res.ok) throw new Error(await res.text());
     const struct = await res.json();
     viewer.loadStructure(struct);
-
-    // 構造情報パネル更新
-    structInfo.innerHTML = `
-      <div>名称: <b>${struct.name || '架空配置'}</b></div>
-      <div>式: ${struct.formula || '—'}</div>
-      <div>点群: ${struct.point_group}</div>
-      <div>モード: ${struct.mode === 'real' ? '実在分子' : '架空配置'}</div>
-      <div>原子数: ${struct.atoms.length}</div>
-      <div>結合数: ${struct.bonds.length}</div>
-      <div>対称要素: ${struct.symmetry_elements.length} 種</div>
-    `;
+    updateStructInfo(struct);
   } catch (e) {
     showError('構造データの読み込みに失敗: ' + e.message);
     return;
@@ -182,143 +179,71 @@ async function loadStructureAndSession(pg, mode) {
 
   // セッション作成
   try {
-    if (sessionId) {
-      await fetch(`${API}/sessions/${sessionId}`, { method: 'DELETE' });
-    }
-    const res = await fetch(`${API}/sessions`, {
+    if (sessionId) await fetch(`${API}/sessions/${sessionId}`, { method: 'DELETE' });
+    const res  = await fetch(`${API}/sessions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ group: pg }),
     });
     const data = await res.json();
-    sessionId = data.session_id;
-    updateSidebar(data);
+    sessionId  = data.session_id;
+    sidebar.updateFromSession(data);
+    sidebar.setAnimating(false);
   } catch (e) {
     showError('セッション作成に失敗: ' + e.message);
   }
 }
 
-// ── サイドバー更新 ────────────────────────────────────────────
-function updateSidebar(sessionData) {
-  // 進捗パス
-  const path = sessionData.decomposition_path ?? [sessionData.initial_group];
-  progressPath.innerHTML = '';
-  path.forEach((gname, i) => {
-    if (i > 0) {
-      const arrow = document.createElement('span');
-      arrow.className = 'path-arrow';
-      arrow.textContent = '→';
-      progressPath.appendChild(arrow);
-    }
-    const span = document.createElement('span');
-    span.className = 'path-group' + (i === path.length - 1 ? ' current' : '');
-    span.textContent = gname;
-    progressPath.appendChild(span);
-  });
+// ── 商群の適用 ────────────────────────────────────────────────
+async function applySelected() {
+  if (viewer.isAnimating) return;
+  const q = sidebar.getSelected();
+  if (!q || !sessionId) return;
 
-  // 商群リスト
-  availableQuotients = sessionData.available_quotients ?? [];
-  selectedQuotientIdx = -1;
-  renderQuotientList();
+  sidebar.setAnimating(true);
 
-  // 組成因子
-  const factors = sessionData.composition_factors ?? [];
-  factorsList.innerHTML = '';
-  if (sessionData.is_complete) {
-    const msg = document.createElement('div');
-    msg.className = 'complete-msg';
-    msg.textContent = '✓ 完成！ 組成因子: ' + factors.join(', ');
-    factorsList.appendChild(msg);
-    quotientList.innerHTML = '<div class="loading">分解完了（E に到達）</div>';
-  } else {
-    factors.forEach(f => {
-      const tag = document.createElement('span');
-      tag.className = 'factor-tag';
-      tag.textContent = f;
-      factorsList.appendChild(tag);
-    });
-  }
-
-  // ヘッダーの点群名更新
-  const curGroup = sessionData.current_group?.name ?? sessionData.initial_group;
-  headerGroup.textContent = curGroup;
-}
-
-function renderQuotientList() {
-  quotientList.innerHTML = '';
-  if (availableQuotients.length === 0) {
-    quotientList.innerHTML = '<div class="loading">商群なし</div>';
-    return;
-  }
-  availableQuotients.forEach((q, i) => {
-    const btn = document.createElement('button');
-    btn.className = 'quotient-btn' + (i === selectedQuotientIdx ? ' selected' : '');
-    btn.dataset.index = i;
-    btn.innerHTML = `
-      <span class="kbd">${i + 1}</span>
-      <span>
-        <div class="q-name">${q.quotient_name}</div>
-        <div class="q-desc">${q.description}</div>
-      </span>
-      <span class="q-arrow">→ ${q.normal_subgroup}</span>
-    `;
-    btn.addEventListener('click', () => selectQuotient(i));
-    btn.addEventListener('mouseenter', () => {
-      viewer.highlightSymmetryByOpTypes(q.op_types ?? []);
-    });
-    btn.addEventListener('mouseleave', () => {
-      viewer.hideAllSymmetry();
-    });
-    quotientList.appendChild(btn);
-  });
-}
-
-function selectQuotient(idx) {
-  selectedQuotientIdx = idx;
-  document.querySelectorAll('.quotient-btn').forEach((btn, i) => {
-    btn.classList.toggle('selected', i === idx);
-  });
-}
-
-// アニメーション速度係数（1.0=普通, 2.0=速い, 0.5=遅い）
-let animSpeed = 1.0;
-
-async function applySelectedQuotient() {
-  if (selectedQuotientIdx < 0 || !sessionId) return;
-  if (viewer.isAnimating) return;  // アニメーション中は多重実行を防ぐ
-  const q = availableQuotients[selectedQuotientIdx];
-  if (!q) return;
-
-  // ── Step1・2・3: アニメーション再生 ──────────────────────────
   viewer.playDecompositionAnimation(q.op_types ?? [], async () => {
-    // アニメーション完了後にバックエンドへ適用
     try {
-      const res = await fetch(`${API}/sessions/${sessionId}/apply`, {
+      const res  = await fetch(`${API}/sessions/${sessionId}/apply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ normal_subgroup: q.normal_subgroup }),
       });
       const data = await res.json();
-      if (!res.ok) { showError(data.error || '適用に失敗'); return; }
-      updateSidebar(data.session);
+      if (!res.ok) { showError(data.error || '適用に失敗'); sidebar.setAnimating(false); return; }
+
+      // サイドバー更新
+      sidebar.updateFromSession(data.session);
+      sidebar.setAnimating(false);
+
+      // ヘッダー更新
+      const curGroup = data.session.current_group?.name ?? data.session.initial_group;
+      headerGroup.textContent = curGroup;
 
       // 次の群の構造を読み込む
       const nextGroup = data.step.to_group;
-      const mode = modeSelect.value;
-      const structRes = await fetch(`${API}/structures/${nextGroup}?mode=${mode}`);
+      const structRes = await fetch(`${API}/structures/${nextGroup}?mode=${modeSelect.value}`);
       if (structRes.ok) {
         const struct = await structRes.json();
         viewer.loadStructure(struct);
-        structInfo.innerHTML = `
-          <div>点群: <b>${struct.point_group}</b></div>
-          <div>モード: ${struct.mode === 'real' ? '実在分子' : '架空配置'}</div>
-          <div>原子数: ${struct.atoms.length} / 結合数: ${struct.bonds.length}</div>
-        `;
+        updateStructInfo(struct);
       }
     } catch (e) {
       showError('適用に失敗: ' + e.message);
+      sidebar.setAnimating(false);
     }
   }, animSpeed);
+}
+
+function updateStructInfo(struct) {
+  structInfo.innerHTML = `
+    <div>名称: <b>${struct.name || '架空配置'}</b></div>
+    <div>式: ${struct.formula || '—'}</div>
+    <div>点群: ${struct.point_group}</div>
+    <div>モード: ${struct.mode === 'real' ? '実在分子' : '架空配置'}</div>
+    <div>原子数: ${struct.atoms.length} / 結合数: ${struct.bonds.length}</div>
+    <div>対称要素: ${struct.symmetry_elements.length} 種</div>
+  `;
 }
 
 // ── キーボード操作 ────────────────────────────────────────────
@@ -327,30 +252,27 @@ document.addEventListener('keydown', async e => {
   const key = e.key;
 
   if (key >= '1' && key <= '9') {
-    const idx = parseInt(key) - 1;
-    if (idx < availableQuotients.length) selectQuotient(idx);
+    sidebar.selectIndex(parseInt(key) - 1);
   } else if (key === 'Enter') {
-    await applySelectedQuotient();
+    await applySelected();
   } else if (key === 'r' || key === 'R') {
-    if (sessionId) {
-      const res = await fetch(`${API}/sessions/${sessionId}/reset`, { method: 'POST' });
-      const data = await res.json();
-      updateSidebar(data);
-      await loadStructureAndSession(data.initial_group, modeSelect.value);
-    }
+    if (!sessionId) return;
+    const res  = await fetch(`${API}/sessions/${sessionId}/reset`, { method: 'POST' });
+    const data = await res.json();
+    await loadStructureAndSession(data.initial_group, modeSelect.value);
   } else if (key === 'h' || key === 'H') {
-    // ヒント: 最初の商群を選択
-    if (availableQuotients.length > 0) selectQuotient(0);
+    sidebar.selectIndex(0);  // ヒント: 最初の商群
+  } else if (key === 'n' || key === 'N') {
+    pgSelect.focus();
   }
 });
 
 // ── ボタン操作 ────────────────────────────────────────────────
-btnLoad.addEventListener('click', () => {
-  loadStructureAndSession(pgSelect.value, modeSelect.value);
-});
-btnSymAll.addEventListener('click', () => viewer.showAllSymmetry());
-btnSymNone.addEventListener('click', () => viewer.hideAllSymmetry());
-btnResetCam.addEventListener('click', () => viewer.resetCamera());
+document.getElementById('btn-load').addEventListener('click', () =>
+  loadStructureAndSession(pgSelect.value, modeSelect.value));
+document.getElementById('btn-sym-all').addEventListener('click',   () => viewer.showAllSymmetry());
+document.getElementById('btn-sym-none').addEventListener('click',  () => viewer.hideAllSymmetry());
+document.getElementById('btn-reset-cam').addEventListener('click', () => viewer.resetCamera());
 document.getElementById('speed-select').addEventListener('change', e => {
   animSpeed = parseFloat(e.target.value);
 });

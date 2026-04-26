@@ -103,73 +103,127 @@ html, body {
   font-size: 13px;
 }
 .path-group {
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 12px;
   border: 1px solid var(--border);
   color: var(--text-dim);
   cursor: default;
+  transition: border-color 0.2s, background 0.2s;
 }
 .path-group.current {
   border-color: var(--accent);
   color: var(--text-main);
-  background: rgba(106, 159, 216, 0.15);
-  font-weight: 600;
+  background: rgba(106, 159, 216, 0.18);
+  font-weight: 700;
+  box-shadow: 0 0 6px rgba(106,159,216,0.25);
 }
-.path-arrow { color: var(--text-dim); font-size: 11px; }
+.path-group.visited { color: var(--text-dim); text-decoration: line-through; }
+.path-arrow { color: var(--text-dim); font-size: 10px; }
 
 /* ── Quotient Buttons ────────────────────────────────────── */
 #quotient-list { display: flex; flex-direction: column; gap: 6px; }
 
 .quotient-btn {
   display: flex; align-items: center; gap: 8px;
-  padding: 8px 10px;
+  padding: 9px 10px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--bg-panel2);
   color: var(--text-main);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
-  text-align: left;
+  text-align: left; width: 100%;
 }
 .quotient-btn:hover {
   border-color: var(--orange);
   background: rgba(255, 153, 85, 0.1);
 }
+.quotient-btn:hover .kbd { border-color: var(--orange); color: var(--orange); }
 .quotient-btn.selected {
   border-color: var(--accent);
   background: rgba(106, 159, 216, 0.15);
 }
+.quotient-btn.selected .kbd { border-color: var(--accent); color: var(--accent); }
 .quotient-btn .kbd {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  font-size: 11px; font-weight: 600;
-  color: var(--text-dim);
-  flex-shrink: 0;
+  width: 22px; height: 22px; flex-shrink: 0;
+  border-radius: 4px; border: 1px solid var(--border);
+  font-size: 11px; font-weight: 700; color: var(--text-dim);
+  transition: border-color 0.15s, color 0.15s;
 }
-.quotient-btn .q-name { font-weight: 600; font-size: 13px; }
-.quotient-btn .q-desc { font-size: 11px; color: var(--text-dim); }
-.quotient-btn .q-arrow { color: var(--text-dim); font-size: 11px; }
+.quotient-btn .q-info { flex: 1; min-width: 0; }
+.quotient-btn .q-name { font-weight: 700; font-size: 13px; }
+.quotient-btn .q-desc { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+.quotient-btn .q-target {
+  font-size: 11px; color: var(--text-dim); flex-shrink: 0;
+  white-space: nowrap;
+}
+.quotient-btn.selected .q-target { color: var(--accent); }
+
+/* グレーアウト（使えない操作）*/
+.quotient-btn.disabled {
+  opacity: 0.38; cursor: not-allowed;
+  border-style: dashed;
+}
+.quotient-btn.disabled:hover {
+  border-color: var(--border); background: var(--bg-panel2);
+}
+
+/* 適用ボタン */
+.apply-btn {
+  width: 100%; padding: 9px 12px;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: var(--radius);
+  font-size: 13px; font-weight: 700;
+  cursor: pointer; margin-top: 4px;
+  transition: background 0.15s, opacity 0.15s;
+}
+.apply-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.apply-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* ヒントテキスト */
+.apply-hint {
+  font-size: 10px; color: var(--text-dim);
+  text-align: center; padding: 2px 0;
+}
 
 /* ── Composition Factors ─────────────────────────────────── */
 #factors-list {
-  display: flex; flex-wrap: wrap; gap: 6px;
-  min-height: 28px;
+  display: flex; flex-direction: column; gap: 5px;
+  min-height: 24px;
 }
 .factor-tag {
-  padding: 3px 10px;
-  border-radius: 12px;
-  background: rgba(68, 204, 136, 0.15);
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px;
+  border-radius: var(--radius);
+  background: rgba(68, 204, 136, 0.10);
+  border: 1px solid rgba(68,204,136,0.4);
+}
+.factor-tag .step-num {
+  font-size: 10px; font-weight: 700;
+  color: var(--text-dim); flex-shrink: 0; width: 16px;
+}
+.factor-tag .factor-name { font-weight: 700; font-size: 13px; color: var(--green-ok); }
+.factor-tag .factor-desc { font-size: 11px; color: var(--text-dim); flex: 1; }
+
+/* 完成パネル */
+.complete-panel {
+  padding: 10px;
+  border-radius: var(--radius);
   border: 1px solid var(--green-ok);
-  color: var(--green-ok);
-  font-size: 12px; font-weight: 600;
+  background: rgba(68,204,136,0.08);
 }
-.complete-msg {
-  font-size: 13px; font-weight: 600;
-  color: var(--green-ok);
-  padding: 8px 0;
+.complete-panel .complete-title {
+  font-size: 13px; font-weight: 700;
+  color: var(--green-ok); margin-bottom: 6px;
 }
+.complete-panel .complete-series {
+  font-size: 12px; color: var(--text-dim); line-height: 1.6;
+}
+.complete-panel .complete-series b { color: var(--text-main); }
+
+/* 空のメッセージ */
+.empty-msg { font-size: 11px; color: var(--text-dim); padding: 4px 0; }
 
 /* ── Mode selector (viewer test page) ───────────────────── */
 #controls-bar {

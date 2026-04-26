@@ -1,15 +1,17 @@
 """
-Flask REST API — フェーズ2
+Flask REST API — フェーズ2〜3
 
 エンドポイント一覧:
-  GET  /api/groups                    利用可能な点群リスト
-  GET  /api/groups/<name>             点群の詳細情報
-  POST /api/sessions                  新セッション開始
-  GET  /api/sessions/<id>             セッション状態取得
-  GET  /api/sessions/<id>/quotients   現在選べる商群リスト
-  POST /api/sessions/<id>/apply       商群を適用（1ステップ進む）
-  POST /api/sessions/<id>/reset       初期点群にリセット
-  DELETE /api/sessions/<id>           セッション削除
+  GET  /api/groups                          利用可能な点群リスト
+  GET  /api/groups/<name>                   点群の詳細情報
+  GET  /api/structures                      全構造サマリー
+  GET  /api/structures/<group>?mode=...     構造データ（atoms/bonds/symmetry_elements）
+  POST /api/sessions                        新セッション開始
+  GET  /api/sessions/<id>                   セッション状態取得
+  GET  /api/sessions/<id>/quotients         現在選べる商群リスト
+  POST /api/sessions/<id>/apply             商群を適用（1ステップ進む）
+  POST /api/sessions/<id>/reset             初期点群にリセット
+  DELETE /api/sessions/<id>                 セッション削除
 """
 
 from flask import Flask, jsonify, request
@@ -18,6 +20,7 @@ from decomposition import (
     create_session, get_session, delete_session,
     list_available_groups, _ALL_GROUPS,
 )
+from crystal_structures import get_structure, list_structures
 
 app = Flask(__name__)
 CORS(app)  # フロントエンド（静的ファイル）からのアクセスを許可
@@ -118,6 +121,23 @@ def api_reset_session(session_id: str):
         return _err("Session not found", 404)
     session.reset()
     return jsonify({"session_id": session_id, **session.to_dict()})
+
+
+# ── 構造データ ────────────────────────────────────────────────
+
+@app.get("/api/structures")
+def api_list_structures():
+    mode = request.args.get("mode")  # optional: "real" or "abstract"
+    return jsonify(list_structures(mode))
+
+
+@app.get("/api/structures/<group_name>")
+def api_get_structure(group_name: str):
+    mode = request.args.get("mode", "abstract")
+    try:
+        return jsonify(get_structure(group_name, mode))
+    except ValueError as e:
+        return _err(str(e), 404)
 
 
 # ── ヘルスチェック ─────────────────────────────────────────────

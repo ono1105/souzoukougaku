@@ -1,0 +1,218 @@
+/* ── Reset & Base ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-deep:      #0d0d1a;
+  --bg-panel:     #14142a;
+  --bg-panel2:    #1a1a35;
+  --border:       #2a2a4a;
+  --accent:       #6a9fd8;
+  --accent-hover: #88bbf0;
+  --text-main:    #e8e8f0;
+  --text-dim:     #8888aa;
+  --orange:       #ff9955;
+  --blue-sym:     #4499ff;
+  --green-ok:     #44cc88;
+  --radius:       6px;
+  --font:         'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+}
+
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg-deep);
+  color: var(--text-main);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow: hidden;
+}
+
+/* ── App Shell ───────────────────────────────────────────── */
+#app {
+  display: grid;
+  grid-template-rows: 48px 1fr 36px;
+  grid-template-columns: 1fr 280px;
+  grid-template-areas:
+    "header  header"
+    "viewer  sidebar"
+    "footer  footer";
+  width: 100vw; height: 100vh;
+}
+
+/* ── Header ──────────────────────────────────────────────── */
+#header {
+  grid-area: header;
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 16px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+#header h1 {
+  font-size: 16px; font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.03em;
+}
+#header .group-label {
+  font-size: 18px; font-weight: 700;
+  color: var(--text-main);
+  margin-left: 8px;
+}
+#header .sep { color: var(--border); }
+
+/* ── 3D Viewer ───────────────────────────────────────────── */
+#viewer-container {
+  grid-area: viewer;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-deep);
+}
+#viewer-container canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+#viewer-overlay {
+  position: absolute; top: 10px; left: 10px;
+  pointer-events: none;
+  font-size: 12px; color: var(--text-dim);
+}
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+#sidebar {
+  grid-area: sidebar;
+  display: flex; flex-direction: column; gap: 0;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+}
+.sidebar-section {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-section h2 {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+/* ── Progress ────────────────────────────────────────────── */
+#progress-path {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  font-size: 13px;
+}
+.path-group {
+  padding: 2px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: default;
+}
+.path-group.current {
+  border-color: var(--accent);
+  color: var(--text-main);
+  background: rgba(106, 159, 216, 0.15);
+  font-weight: 600;
+}
+.path-arrow { color: var(--text-dim); font-size: 11px; }
+
+/* ── Quotient Buttons ────────────────────────────────────── */
+#quotient-list { display: flex; flex-direction: column; gap: 6px; }
+
+.quotient-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-panel2);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: left;
+}
+.quotient-btn:hover {
+  border-color: var(--orange);
+  background: rgba(255, 153, 85, 0.1);
+}
+.quotient-btn.selected {
+  border-color: var(--accent);
+  background: rgba(106, 159, 216, 0.15);
+}
+.quotient-btn .kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  font-size: 11px; font-weight: 600;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.quotient-btn .q-name { font-weight: 600; font-size: 13px; }
+.quotient-btn .q-desc { font-size: 11px; color: var(--text-dim); }
+.quotient-btn .q-arrow { color: var(--text-dim); font-size: 11px; }
+
+/* ── Composition Factors ─────────────────────────────────── */
+#factors-list {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  min-height: 28px;
+}
+.factor-tag {
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: rgba(68, 204, 136, 0.15);
+  border: 1px solid var(--green-ok);
+  color: var(--green-ok);
+  font-size: 12px; font-weight: 600;
+}
+.complete-msg {
+  font-size: 13px; font-weight: 600;
+  color: var(--green-ok);
+  padding: 8px 0;
+}
+
+/* ── Mode selector (viewer test page) ───────────────────── */
+#controls-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+#controls-bar select, #controls-bar button {
+  background: var(--bg-panel2);
+  color: var(--text-main);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+#controls-bar select:hover, #controls-bar button:hover {
+  border-color: var(--accent);
+}
+#controls-bar label { font-size: 12px; color: var(--text-dim); }
+
+/* ── Footer ──────────────────────────────────────────────── */
+#footer {
+  grid-area: footer;
+  display: flex; align-items: center; gap: 18px;
+  padding: 0 16px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text-dim);
+  user-select: none;
+}
+#footer .shortcut { color: var(--text-main); }
+#footer kbd {
+  display: inline-block;
+  padding: 0 5px; border-radius: 3px;
+  border: 1px solid var(--border);
+  font-size: 10px;
+  background: var(--bg-panel2);
+  color: var(--text-main);
+  font-family: monospace;
+}
+
+/* ── Loading / Error ─────────────────────────────────────── */
+.loading { color: var(--text-dim); font-size: 12px; padding: 8px 0; }
+.error-msg { color: #ff6666; font-size: 12px; padding: 4px 0; }

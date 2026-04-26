@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>結晶対称性パズル — 3Dビューア</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* viewer.html 専用: 2カラムレイアウト */
+    #app {
+      grid-template-rows: 48px 36px 1fr 36px;
+      grid-template-columns: 1fr 280px;
+      grid-template-areas:
+        "header  header"
+        "ctrls   ctrls"
+        "viewer  sidebar"
+        "footer  footer";
+    }
+    #controls-bar { grid-area: ctrls; }
+  </style>
+
+  <!-- Three.js importmap -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ヘッダー -->
+  <header id="header">
+    <h1>結晶対称性パズル</h1>
+    <span class="sep">|</span>
+    <span class="group-label" id="header-group">C₃ᵥ</span>
+  </header>
+
+  <!-- コントロールバー -->
+  <div id="controls-bar">
+    <label>点群:</label>
+    <select id="pg-select"></select>
+    <label>モード:</label>
+    <select id="mode-select">
+      <option value="abstract">架空配置</option>
+      <option value="real">実在分子</option>
+    </select>
+    <button id="btn-load">読み込む</button>
+    <button id="btn-sym-all">全対称要素を表示</button>
+    <button id="btn-sym-none">対称要素を隠す</button>
+    <button id="btn-reset-cam">カメラリセット</button>
+  </div>
+
+  <!-- 3D ビューア -->
+  <div id="viewer-container">
+    <div id="viewer-overlay">ドラッグ: 回転 &nbsp;|&nbsp; スクロール: ズーム</div>
+  </div>
+
+  <!-- サイドバー -->
+  <aside id="sidebar">
+
+    <div class="sidebar-section">
+      <h2>① 分解の進捗</h2>
+      <div id="progress-path">
+        <span class="path-group current" id="path-start">C₃ᵥ</span>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <h2>② 商群（選択）</h2>
+      <div id="quotient-list">
+        <div class="loading">点群を選んで読み込んでください</div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <h2>③ 見つけた組成因子</h2>
+      <div id="factors-list"></div>
+    </div>
+
+    <div class="sidebar-section">
+      <h2>構造情報</h2>
+      <div id="struct-info" style="font-size:12px;color:var(--text-dim);line-height:1.8"></div>
+    </div>
+
+  </aside>
+
+  <!-- フッター -->
+  <footer id="footer">
+    <span><kbd>1</kbd>–<kbd>9</kbd> <span class="shortcut">商群を選択</span></span>
+    <span><kbd>Enter</kbd> <span class="shortcut">適用</span></span>
+    <span><kbd>H</kbd> <span class="shortcut">ヒント</span></span>
+    <span><kbd>R</kbd> <span class="shortcut">リセット</span></span>
+    <span><kbd>N</kbd> <span class="shortcut">点群選択へ</span></span>
+  </footer>
+
+</div>
+
+<script type="module">
+import { CrystalViewer } from './js/viewer.js';
+
+const API = 'http://localhost:5000/api';
+
+// ── DOM 参照 ─────────────────────────────────────────────────
+const pgSelect    = document.getElementById('pg-select');
+const modeSelect  = document.getElementById('mode-select');
+const btnLoad     = document.getElementById('btn-load');
+const btnSymAll   = document.getElementById('btn-sym-all');
+const btnSymNone  = document.getElementById('btn-sym-none');
+const btnResetCam = document.getElementById('btn-reset-cam');
+const headerGroup = document.getElementById('header-group');
+const quotientList= document.getElementById('quotient-list');
+const factorsList = document.getElementById('factors-list');
+const structInfo  = document.getElementById('struct-info');
+const progressPath= document.getElementById('progress-path');
+
+// ── Viewer 初期化 ────────────────────────────────────────────
+const container = document.getElementById('viewer-container');
+const viewer = new CrystalViewer(container);
+
+// ── セッション状態 ───────────────────────────────────────────
+let sessionId = null;
+let currentGroup = 'C3v';
+let availableQuotients = [];
+let selectedQuotientIdx = -1;
+
+// ── 点群リスト読み込み ────────────────────────────────────────
+async function loadGroupList() {
+  try {
+    const res = await fetch(`${API}/groups`);
+    const groups = await res.json();
+    groups.forEach(g => {
+      const opt = document.createElement('option');
+      opt.value = g.name;
+      opt.textContent = `${g.display_name}  (${g.system}, 位数${g.order})`;
+      if (g.name === 'C3v') opt.selected = true;
+      pgSelect.appendChild(opt);
+    });
+    // 初期ロード
+    await loadStructureAndSession('C3v', 'abstract');
+  } catch (e) {
+    showError(`APIサーバーに接続できません: ${e.message}\n` +
+              `python3 backend/api.py を起動してください。`);
+  }
+}
+
+// ── 構造データ読み込み ────────────────────────────────────────
+async function loadStructureAndSession(pg, mode) {
+  currentGroup = pg;
+  headerGroup.textContent = pg;
+
+  // 構造データ
+  try {
+    const res = await fetch(`${API}/structures/${pg}?mode=${mode}`);
+    if (!res.ok) throw new Error(await res.text());
+    const struct = await res.json();
+    viewer.loadStructure(struct);
+
+    // 構造情報パネル更新
+    structInfo.innerHTML = `
+      <div>名称: <b>${struct.name || '架空配置'}</b></div>
+      <div>式: ${struct.formula || '—'}</div>
+      <div>点群: ${struct.point_group}</div>
+      <div>モード: ${struct.mode === 'real' ? '実在分子' : '架空配置'}</div>
+      <div>原子数: ${struct.atoms.length}</div>
+      <div>結合数: ${struct.bonds.length}</div>
+      <div>対称要素: ${struct.symmetry_elements.length} 種</div>
+    `;
+  } catch (e) {
+    showError('構造データの読み込みに失敗: ' + e.message);
+    return;
+  }
+
+  // セッション作成
+  try {
+    if (sessionId) {
+      await fetch(`${API}/sessions/${sessionId}`, { method: 'DELETE' });
+    }
+    const res = await fetch(`${API}/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ group: pg }),
+    });
+    const data = await res.json();
+    sessionId = data.session_id;
+    updateSidebar(data);
+  } catch (e) {
+    showError('セッション作成に失敗: ' + e.message);
+  }
+}
+
+// ── サイドバー更新 ────────────────────────────────────────────
+function updateSidebar(sessionData) {
+  // 進捗パス
+  const path = sessionData.decomposition_path ?? [sessionData.initial_group];
+  progressPath.innerHTML = '';
+  path.forEach((gname, i) => {
+    if (i > 0) {
+      const arrow = document.createElement('span');
+      arrow.className = 'path-arrow';
+      arrow.textContent = '→';
+      progressPath.appendChild(arrow);
+    }
+    const span = document.createElement('span');
+    span.className = 'path-group' + (i === path.length - 1 ? ' current' : '');
+    span.textContent = gname;
+    progressPath.appendChild(span);
+  });
+
+  // 商群リスト
+  availableQuotients = sessionData.available_quotients ?? [];
+  selectedQuotientIdx = -1;
+  renderQuotientList();
+
+  // 組成因子
+  const factors = sessionData.composition_factors ?? [];
+  factorsList.innerHTML = '';
+  if (sessionData.is_complete) {
+    const msg = document.createElement('div');
+    msg.className = 'complete-msg';
+    msg.textContent = '✓ 完成！ 組成因子: ' + factors.join(', ');
+    factorsList.appendChild(msg);
+    quotientList.innerHTML = '<div class="loading">分解完了（E に到達）</div>';
+  } else {
+    factors.forEach(f => {
+      const tag = document.createElement('span');
+      tag.className = 'factor-tag';
+      tag.textContent = f;
+      factorsList.appendChild(tag);
+    });
+  }
+
+  // ヘッダーの点群名更新
+  const curGroup = sessionData.current_group?.name ?? sessionData.initial_group;
+  headerGroup.textContent = curGroup;
+}
+
+function renderQuotientList() {
+  quotientList.innerHTML = '';
+  if (availableQuotients.length === 0) {
+    quotientList.innerHTML = '<div class="loading">商群なし</div>';
+    return;
+  }
+  availableQuotients.forEach((q, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'quotient-btn' + (i === selectedQuotientIdx ? ' selected' : '');
+    btn.dataset.index = i;
+    btn.innerHTML = `
+      <span class="kbd">${i + 1}</span>
+      <span>
+        <div class="q-name">${q.quotient_name}</div>
+        <div class="q-desc">${q.description}</div>
+      </span>
+      <span class="q-arrow">→ ${q.normal_subgroup}</span>
+    `;
+    btn.addEventListener('click', () => selectQuotient(i));
+    btn.addEventListener('mouseenter', () => {
+      viewer.showSymmetryByOpTypes(q.op_types ?? []);
+    });
+    btn.addEventListener('mouseleave', () => {
+      viewer.hideAllSymmetry();
+    });
+    quotientList.appendChild(btn);
+  });
+}
+
+function selectQuotient(idx) {
+  selectedQuotientIdx = idx;
+  document.querySelectorAll('.quotient-btn').forEach((btn, i) => {
+    btn.classList.toggle('selected', i === idx);
+  });
+}
+
+async function applySelectedQuotient() {
+  if (selectedQuotientIdx < 0 || !sessionId) return;
+  const q = availableQuotients[selectedQuotientIdx];
+  if (!q) return;
+
+  try {
+    const res = await fetch(`${API}/sessions/${sessionId}/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ normal_subgroup: q.normal_subgroup }),
+    });
+    const data = await res.json();
+    updateSidebar(data.session);
+
+    // 次の群の構造を読み込む
+    const nextGroup = data.step.to_group;
+    const mode = modeSelect.value;
+    const structRes = await fetch(`${API}/structures/${nextGroup}?mode=${mode}`);
+    if (structRes.ok) {
+      const struct = await structRes.json();
+      viewer.loadStructure(struct);
+      structInfo.innerHTML = `
+        <div>点群: <b>${struct.point_group}</b></div>
+        <div>モード: ${struct.mode === 'real' ? '実在分子' : '架空配置'}</div>
+        <div>原子数: ${struct.atoms.length} / 結合数: ${struct.bonds.length}</div>
+      `;
+    }
+  } catch (e) {
+    showError('適用に失敗: ' + e.message);
+  }
+}
+
+// ── キーボード操作 ────────────────────────────────────────────
+document.addEventListener('keydown', async e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  const key = e.key;
+
+  if (key >= '1' && key <= '9') {
+    const idx = parseInt(key) - 1;
+    if (idx < availableQuotients.length) selectQuotient(idx);
+  } else if (key === 'Enter') {
+    await applySelectedQuotient();
+  } else if (key === 'r' || key === 'R') {
+    if (sessionId) {
+      const res = await fetch(`${API}/sessions/${sessionId}/reset`, { method: 'POST' });
+      const data = await res.json();
+      updateSidebar(data);
+      await loadStructureAndSession(data.initial_group, modeSelect.value);
+    }
+  } else if (key === 'h' || key === 'H') {
+    // ヒント: 最初の商群を選択
+    if (availableQuotients.length > 0) selectQuotient(0);
+  }
+});
+
+// ── ボタン操作 ────────────────────────────────────────────────
+btnLoad.addEventListener('click', () => {
+  loadStructureAndSession(pgSelect.value, modeSelect.value);
+});
+btnSymAll.addEventListener('click', () => viewer.showAllSymmetry());
+btnSymNone.addEventListener('click', () => viewer.hideAllSymmetry());
+btnResetCam.addEventListener('click', () => viewer.resetCamera());
+
+// ── エラー表示 ────────────────────────────────────────────────
+function showError(msg) {
+  structInfo.innerHTML = `<div class="error-msg">${msg.replace(/\n/g,'<br>')}</div>`;
+}
+
+// ── 起動 ─────────────────────────────────────────────────────
+loadGroupList();
+</script>
+</body>
+</html>

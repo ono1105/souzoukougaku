@@ -258,7 +258,7 @@ function renderQuotientList() {
     `;
     btn.addEventListener('click', () => selectQuotient(i));
     btn.addEventListener('mouseenter', () => {
-      viewer.showSymmetryByOpTypes(q.op_types ?? []);
+      viewer.highlightSymmetryByOpTypes(q.op_types ?? []);
     });
     btn.addEventListener('mouseleave', () => {
       viewer.hideAllSymmetry();

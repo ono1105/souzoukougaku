@@ -52,6 +52,12 @@
     <button id="btn-sym-all">全対称要素を表示</button>
     <button id="btn-sym-none">対称要素を隠す</button>
     <button id="btn-reset-cam">カメラリセット</button>
+    <label>速度:</label>
+    <select id="speed-select">
+      <option value="0.5">遅い</option>
+      <option value="1.0" selected>普通</option>
+      <option value="2.0">速い</option>
+    </select>
   </div>
 
   <!-- 3D ビューア -->
@@ -274,36 +280,45 @@ function selectQuotient(idx) {
   });
 }
 
+// アニメーション速度係数（1.0=普通, 2.0=速い, 0.5=遅い）
+let animSpeed = 1.0;
+
 async function applySelectedQuotient() {
   if (selectedQuotientIdx < 0 || !sessionId) return;
+  if (viewer.isAnimating) return;  // アニメーション中は多重実行を防ぐ
   const q = availableQuotients[selectedQuotientIdx];
   if (!q) return;
 
-  try {
-    const res = await fetch(`${API}/sessions/${sessionId}/apply`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ normal_subgroup: q.normal_subgroup }),
-    });
-    const data = await res.json();
-    updateSidebar(data.session);
+  // ── Step1・2・3: アニメーション再生 ──────────────────────────
+  viewer.playDecompositionAnimation(q.op_types ?? [], async () => {
+    // アニメーション完了後にバックエンドへ適用
+    try {
+      const res = await fetch(`${API}/sessions/${sessionId}/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ normal_subgroup: q.normal_subgroup }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showError(data.error || '適用に失敗'); return; }
+      updateSidebar(data.session);
 
-    // 次の群の構造を読み込む
-    const nextGroup = data.step.to_group;
-    const mode = modeSelect.value;
-    const structRes = await fetch(`${API}/structures/${nextGroup}?mode=${mode}`);
-    if (structRes.ok) {
-      const struct = await structRes.json();
-      viewer.loadStructure(struct);
-      structInfo.innerHTML = `
-        <div>点群: <b>${struct.point_group}</b></div>
-        <div>モード: ${struct.mode === 'real' ? '実在分子' : '架空配置'}</div>
-        <div>原子数: ${struct.atoms.length} / 結合数: ${struct.bonds.length}</div>
-      `;
+      // 次の群の構造を読み込む
+      const nextGroup = data.step.to_group;
+      const mode = modeSelect.value;
+      const structRes = await fetch(`${API}/structures/${nextGroup}?mode=${mode}`);
+      if (structRes.ok) {
+        const struct = await structRes.json();
+        viewer.loadStructure(struct);
+        structInfo.innerHTML = `
+          <div>点群: <b>${struct.point_group}</b></div>
+          <div>モード: ${struct.mode === 'real' ? '実在分子' : '架空配置'}</div>
+          <div>原子数: ${struct.atoms.length} / 結合数: ${struct.bonds.length}</div>
+        `;
+      }
+    } catch (e) {
+      showError('適用に失敗: ' + e.message);
     }
-  } catch (e) {
-    showError('適用に失敗: ' + e.message);
-  }
+  }, animSpeed);
 }
 
 // ── キーボード操作 ────────────────────────────────────────────
@@ -336,6 +351,9 @@ btnLoad.addEventListener('click', () => {
 btnSymAll.addEventListener('click', () => viewer.showAllSymmetry());
 btnSymNone.addEventListener('click', () => viewer.hideAllSymmetry());
 btnResetCam.addEventListener('click', () => viewer.resetCamera());
+document.getElementById('speed-select').addEventListener('change', e => {
+  animSpeed = parseFloat(e.target.value);
+});
 
 // ── エラー表示 ────────────────────────────────────────────────
 function showError(msg) {

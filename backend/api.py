@@ -14,16 +14,22 @@ Flask REST API — フェーズ2〜3
   DELETE /api/sessions/<id>                 セッション削除
 """
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+import os
 from decomposition import (
     create_session, get_session, delete_session,
     list_available_groups, _ALL_GROUPS,
 )
 from crystal_structures import get_structure, list_structures
 
-app = Flask(__name__)
-CORS(app)  # フロントエンド（静的ファイル）からのアクセスを許可
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), '..', 'frontend')
+app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path='')
+CORS(app)
+
+@app.get('/')
+def index():
+    return send_from_directory(FRONTEND_DIR, 'viewer.html')
 
 
 def _err(message: str, status: int = 400):

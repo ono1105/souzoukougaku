@@ -1,12 +1,11 @@
 /**
  * CrystalViewer — Three.js 3D ビューア
  *
- * Phase 5 変更点:
- *   - THREE.Clock を導入して dt（前フレーム経過秒）を計測
- *   - _startLoop で updateSymmetryAnimations(dt) を毎フレーム呼ぶ
- *   - highlightSymmetryByOpTypes / hideAllSymmetry が setHighlighted ベースに変わり
- *     即時切り替えではなくスムーズなフェードになった
- *   - showAllSymmetry も同様
+ * Phase 6 変更点:
+ *   - _atomMeshes / _bondMeshes を個別にトラック
+ *   - DecompositionAnimator を統合
+ *   - playDecompositionAnimation(opTypes, onComplete, speedFactor) を追加
+ *   - _startLoop に animator.update(dt) を追加
  */
 
 import * as THREE from 'three';
@@ -19,16 +18,20 @@ import {
   showAllSymmetryObjects,
   updateSymmetryAnimations,
 } from './symmetry_elements.js';
+import { computeTargetPositions, DecompositionAnimator } from './animator.js';
 
 export class CrystalViewer {
   constructor(container) {
-    this.container = container;
+    this.container      = container;
     this._structureGroup = new THREE.Group();
     this._symmetryGroup  = new THREE.Group();
     this._symObjects     = [];
     this._symElements    = [];
+    this._atomMeshes     = [];   // ← Phase 6: 個別トラック
+    this._bondMeshes     = [];   // ← Phase 6: 個別トラック
     this._moleculeSize   = 3.0;
     this._clock          = new THREE.Clock();
+    this._animator       = new DecompositionAnimator();  // ← Phase 6
 
     this._initRenderer();
     this._initScene();
@@ -67,11 +70,9 @@ export class CrystalViewer {
 
   _initLights() {
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.45));
-
     const main = new THREE.DirectionalLight(0xffffff, 1.1);
     main.position.set(5, 8, 6);
     this.scene.add(main);
-
     const fill = new THREE.DirectionalLight(0x8899cc, 0.4);
     fill.position.set(-5, -3, -4);
     this.scene.add(fill);
@@ -79,22 +80,23 @@ export class CrystalViewer {
 
   _initControls() {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.enableDamping  = true;
-    this.controls.dampingFactor  = 0.08;
-    this.controls.minDistance    = 0.5;
-    this.controls.maxDistance    = 100;
-    this.controls.enablePan      = true;
-    this.controls.rotateSpeed    = 0.8;
-    this.controls.zoomSpeed      = 1.2;
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.08;
+    this.controls.minDistance   = 0.5;
+    this.controls.maxDistance   = 100;
+    this.controls.enablePan     = true;
+    this.controls.rotateSpeed   = 0.8;
+    this.controls.zoomSpeed     = 1.2;
   }
 
   _startLoop() {
     this._clock.start();
     const animate = () => {
       requestAnimationFrame(animate);
-      const dt = Math.min(this._clock.getDelta(), 0.1); // 最大 100ms でクランプ
+      const dt = Math.min(this._clock.getDelta(), 0.1);
       this.controls.update();
-      updateSymmetryAnimations(this._symObjects, dt);   // ← Phase 5 追加
+      updateSymmetryAnimations(this._symObjects, dt);
+      this._animator.update(dt);                     // ← Phase 6
       this.renderer.render(this.scene, this.camera);
     };
     animate();
@@ -116,14 +118,17 @@ export class CrystalViewer {
   // ── 構造ロード ─────────────────────────────────────────────
 
   loadStructure(structData) {
+    // 実行中のアニメーションをキャンセル
+    this._animator.cancel();
+
     this._clearStructure();
-    const atoms  = structData.atoms  ?? [];
-    const bonds  = structData.bonds  ?? [];
+    const atoms = structData.atoms ?? [];
+    const bonds = structData.bonds ?? [];
 
     const posMap = {};
     atoms.forEach(a => { posMap[a.id] = a.position; });
 
-    // 原子球（ジオメトリ共有でメモリ節約）
+    // 原子球
     const geoCache = {};
     atoms.forEach(atom => {
       const r = getRadius(atom.element);
@@ -137,6 +142,7 @@ export class CrystalViewer {
       mesh.position.set(...atom.position);
       mesh.userData = { atomId: atom.id, element: atom.element };
       this._structureGroup.add(mesh);
+      this._atomMeshes.push(mesh);  // ← Phase 6
     });
 
     // 結合シリンダー
@@ -147,12 +153,13 @@ export class CrystalViewer {
       const aPos = posMap[bond.from];
       const bPos = posMap[bond.to];
       if (!aPos || !bPos) return;
-      this._structureGroup.add(this._makeBond(aPos, bPos, bondMat));
+      const mesh = this._makeBond(aPos, bPos, bondMat);
+      this._structureGroup.add(mesh);
+      this._bondMeshes.push(mesh);  // ← Phase 6
     });
 
     this._fitCamera();
 
-    // 対称要素セット（フェードアウト状態で初期化）
     const elements = structData.symmetry_elements ?? [];
     this.setSymmetryElements(elements);
   }
@@ -195,39 +202,78 @@ export class CrystalViewer {
     this._symmetryGroup.clear();
     this._symObjects  = [];
     this._symElements = [];
+    this._atomMeshes  = [];  // ← Phase 6
+    this._bondMeshes  = [];  // ← Phase 6
   }
 
   // ── 対称要素 API ───────────────────────────────────────────
 
   setSymmetryElements(elements) {
-    // 既存をクリア（_anim 状態もリセットされる）
     this._symmetryGroup.clear();
     this._symElements = elements;
     this._symObjects  = createSymmetryObjects(elements, this._moleculeSize);
     this._symObjects.forEach(obj => this._symmetryGroup.add(obj));
   }
 
-  /**
-   * op_types に一致する対称要素をフェードイン表示し、それ以外をフェードアウト。
-   * Phase 5 のホバーイベントから呼ぶ。
-   */
   highlightSymmetryByOpTypes(opTypes) {
     highlightByOpTypes(this._symObjects, this._symElements, opTypes);
   }
 
-  /** 全対称要素をフェードアウト（ホバーを外れたとき） */
   hideAllSymmetry() {
     hideAllSymmetryObjects(this._symObjects);
   }
 
-  /** 全対称要素を表示（デバッグ・テスト用） */
   showAllSymmetry() {
     showAllSymmetryObjects(this._symObjects);
   }
 
-  resetCamera() {
-    this._fitCamera();
+  // ── Phase 6: 分解アニメーション ────────────────────────────
+
+  /**
+   * 商群適用アニメーションを再生する。
+   *
+   * @param {string[]}  opTypes      - 商群の op_types（例: ["mirror"]）
+   * @param {Function}  onComplete   - アニメーション完了後に呼ぶコールバック
+   * @param {number}    speedFactor  - 速度係数（0.5=遅い, 1.0=普通, 2.0=速い）
+   */
+  playDecompositionAnimation(opTypes, onComplete, speedFactor = 1.0) {
+    // 対応する対称要素を検索
+    const elemIndex = this._symElements.findIndex(e => opTypes.includes(e.type));
+
+    if (elemIndex < 0 || this._atomMeshes.length === 0) {
+      // 対応する対称要素がない、または原子がない → スキップしてすぐ完了
+      hideAllSymmetryObjects(this._symObjects);
+      onComplete?.();
+      return;
+    }
+
+    const element = this._symElements[elemIndex];
+    const targets = computeTargetPositions(this._atomMeshes, element);
+
+    // 対称要素をハイライト
+    this.highlightSymmetryByOpTypes(opTypes);
+
+    this._animator.play(
+      this._atomMeshes,
+      this._bondMeshes,
+      targets,
+      this._symObjects,
+      onComplete,
+      speedFactor,
+    );
   }
+
+  get isAnimating() {
+    return this._animator.isActive;
+  }
+
+  setAnimationSpeed(factor) {
+    this._animator.setSpeed(factor);
+  }
+
+  // ── その他 ────────────────────────────────────────────────
+
+  resetCamera() { this._fitCamera(); }
 
   dispose() {
     this.renderer.dispose();

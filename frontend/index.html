@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>結晶対称性パズル</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     スタート画面
+══════════════════════════════════════════ -->
+<div id="screen-start">
+
+  <div class="start-logo">
+    <h1>結晶対称性パズル</h1>
+    <p>Crystal Point Group Decomposition</p>
+  </div>
+
+  <!-- モード選択 -->
+  <div>
+    <div style="text-align:center;font-size:12px;color:var(--text-dim);margin-bottom:10px;">表示モードを選択</div>
+    <div class="mode-toggle">
+      <div class="mode-pill active" data-mode="abstract" id="mode-abstract">架空配置</div>
+      <div class="mode-pill"        data-mode="real"     id="mode-real">実在分子</div>
+    </div>
+  </div>
+
+  <!-- 点群グリッド -->
+  <div class="crystal-grid" id="group-grid">
+    <!-- JS で生成 -->
+  </div>
+
+  <!-- 始めるボタン -->
+  <div class="start-btn-wrap">
+    <button class="start-btn" id="start-btn" disabled>始める →</button>
+    <div class="start-selection-info" id="start-info">点群を選んでください</div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════
+     ゲーム画面
+══════════════════════════════════════════ -->
+<div id="screen-game" class="app">
+
+  <div id="app" style="
+    display: grid;
+    grid-template-rows: 48px 1fr 36px;
+    grid-template-columns: 1fr 280px;
+    grid-template-areas: 'header header' 'viewer sidebar' 'footer footer';
+    width: 100vw; height: 100vh;
+  ">
+
+    <!-- ヘッダー -->
+    <header id="header" style="grid-area:header;display:flex;align-items:center;gap:10px;padding:0 16px;background:var(--bg-panel);border-bottom:1px solid var(--border);">
+      <button class="back-btn" id="btn-back">← 点群選択</button>
+      <span style="color:var(--border)">|</span>
+      <span style="font-size:14px;font-weight:600;color:var(--accent)">結晶対称性パズル</span>
+      <span style="color:var(--border)">|</span>
+      <span class="group-label" id="header-group" style="font-size:17px;font-weight:700;color:var(--text-main)"></span>
+      <span id="header-mode" style="font-size:11px;color:var(--text-dim);margin-left:4px;"></span>
+      <span style="flex:1"></span>
+      <label style="font-size:11px;color:var(--text-dim)">速度:</label>
+      <select id="speed-select" style="background:var(--bg-panel2);color:var(--text-main);border:1px solid var(--border);border-radius:var(--radius);padding:3px 8px;font-size:12px;cursor:pointer;">
+        <option value="0.5">遅い</option>
+        <option value="1.0" selected>普通</option>
+        <option value="2.0">速い</option>
+      </select>
+    </header>
+
+    <!-- 3D ビューア -->
+    <div id="viewer-container" style="grid-area:viewer;position:relative;overflow:hidden;background:var(--bg-deep);">
+      <div style="position:absolute;top:10px;left:10px;font-size:11px;color:var(--text-dim);pointer-events:none;">
+        ドラッグ: 回転 &nbsp;|&nbsp; スクロール: ズーム
+      </div>
+    </div>
+
+    <!-- サイドバー -->
+    <aside id="sidebar" style="grid-area:sidebar;display:flex;flex-direction:column;gap:0;background:var(--bg-panel);border-left:1px solid var(--border);overflow-y:auto;">
+
+      <div class="sidebar-section">
+        <h2>① 分解の進捗</h2>
+        <div id="progress-path"></div>
+      </div>
+
+      <div class="sidebar-section">
+        <h2>② 商群（選択）</h2>
+        <div id="quotient-list">
+          <div class="loading">読み込み中...</div>
+        </div>
+        <button class="apply-btn" id="apply-btn" disabled>適用  Enter</button>
+      </div>
+
+      <div class="sidebar-section">
+        <h2>③ 見つけた組成因子</h2>
+        <div id="factors-list"></div>
+      </div>
+
+      <div class="sidebar-section">
+        <h2>構造情報</h2>
+        <div id="struct-info" style="font-size:12px;color:var(--text-dim);line-height:1.8;"></div>
+      </div>
+
+    </aside>
+
+    <!-- フッター -->
+    <footer id="footer" style="grid-area:footer;display:flex;align-items:center;gap:18px;padding:0 16px;background:var(--bg-panel);border-top:1px solid var(--border);font-size:11px;color:var(--text-dim);">
+      <span><kbd>1</kbd>–<kbd>9</kbd> <span class="shortcut">商群を選択</span></span>
+      <span><kbd>↑</kbd><kbd>↓</kbd> <span class="shortcut">上下移動</span></span>
+      <span><kbd>Enter</kbd> <span class="shortcut">適用</span></span>
+      <span><kbd>H</kbd> <span class="shortcut">ヒント</span></span>
+      <span><kbd>R</kbd> <span class="shortcut">リセット</span></span>
+      <span><kbd>N</kbd> <span class="shortcut">点群選択へ</span></span>
+      <span><kbd>Esc</kbd> <span class="shortcut">ハイライト解除</span></span>
+    </footer>
+
+  </div>
+</div>
+
+<script type="module">
+import { CrystalViewer }      from './js/viewer.js';
+import { Sidebar }            from './js/sidebar.js';
+import { KeyboardController } from './js/keyboard.js';
+
+const API = 'http://localhost:5000/api';
+
+// ── 結晶系ごとの点群（固定順）────────────────────────────────
+const CRYSTAL_SYSTEMS = [
+  { name: "三斜晶系",   groups: ["C1", "Ci"] },
+  { name: "単斜晶系",   groups: ["Cs", "C2", "C2h"] },
+  { name: "斜方晶系",   groups: ["C2v", "D2", "D2h"] },
+  { name: "三方晶系",   groups: ["C3", "C3i", "C3v", "D3", "D3d", "D3h"] },
+  { name: "正方晶系",   groups: ["S4", "C4", "C4h", "C4v", "D2d", "D4", "D4h"] },
+  { name: "六方晶系",   groups: ["C3h", "C6", "C6h", "C6v", "D6", "D6h"] },
+  { name: "立方晶系",   groups: ["T", "Td", "Th", "O", "Oh"] },
+];
+
+// ── 状態 ─────────────────────────────────────────────────────
+let groupData     = {};   // name → {display_name, order, description, ...}
+let selectedGroup = null;
+let selectedMode  = 'abstract';
+let sessionId     = null;
+let animSpeed     = 1.0;
+let keyboard      = null;
+let viewer        = null;
+let sidebar       = null;
+
+// ── スタート画面：点群リスト構築 ─────────────────────────────
+async function initStartScreen() {
+  const res    = await fetch(`${API}/groups`);
+  const groups = await res.json();
+  groups.forEach(g => { groupData[g.name] = g; });
+
+  const grid = document.getElementById('group-grid');
+  CRYSTAL_SYSTEMS.forEach(sys => {
+    const sec = document.createElement('div');
+    sec.className = 'crystal-section';
+
+    const h3 = document.createElement('h3');
+    h3.textContent = sys.name;
+    sec.appendChild(h3);
+
+    const cards = document.createElement('div');
+    cards.className = 'group-cards';
+
+    sys.groups.forEach(name => {
+      const g = groupData[name];
+      if (!g) return;
+      const card = document.createElement('div');
+      card.className = 'group-card';
+      card.dataset.name = name;
+      card.title = g.description || '';
+      card.innerHTML = `
+        <span class="group-card-name">${g.display_name}</span>
+        <span class="group-card-order">位数${g.order}</span>
+      `;
+      card.addEventListener('click', () => selectGroup(name));
+      cards.appendChild(card);
+    });
+    sec.appendChild(cards);
+    grid.appendChild(sec);
+  });
+}
+
+function selectGroup(name) {
+  // 前の選択を解除
+  document.querySelectorAll('.group-card.selected').forEach(c => c.classList.remove('selected'));
+  document.querySelector(`.group-card[data-name="${name}"]`)?.classList.add('selected');
+  selectedGroup = name;
+
+  const g = groupData[name];
+  const info = document.getElementById('start-info');
+  info.textContent = g ? `${g.display_name}  位数${g.order}  —  ${g.description || ''}` : '';
+
+  document.getElementById('start-btn').disabled = false;
+}
+
+// ── モード選択 ────────────────────────────────────────────────
+document.querySelectorAll('.mode-pill').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('.mode-pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    selectedMode = pill.dataset.mode;
+  });
+});
+
+// ── スタート画面 → ゲーム画面 ─────────────────────────────────
+document.getElementById('start-btn').addEventListener('click', async () => {
+  if (!selectedGroup) return;
+  await startGame(selectedGroup, selectedMode);
+});
+
+async function startGame(pg, mode) {
+  // 画面切り替え
+  document.getElementById('screen-start').style.display = 'none';
+  document.getElementById('screen-game').style.display  = 'block';
+
+  // Viewer・Sidebar・Keyboard を初期化（初回のみ）
+  if (!viewer) {
+    viewer = new CrystalViewer(document.getElementById('viewer-container'));
+
+    sidebar = new Sidebar({
+      progressEl:     document.getElementById('progress-path'),
+      quotientListEl: document.getElementById('quotient-list'),
+      factorsListEl:  document.getElementById('factors-list'),
+      applyBtnEl:     document.getElementById('apply-btn'),
+      onQuotientSelect: (idx) => {
+        const q = sidebar.getSelected();
+        if (q) viewer.highlightSymmetryByOpTypes(q.op_types ?? []);
+      },
+      onApply:       () => applySelected(),
+      onHoverEnter:  (q) => viewer.highlightSymmetryByOpTypes(q.op_types ?? []),
+      onHoverLeave:  ()  => viewer.hideAllSymmetry(),
+      onNewGroup:    () => goToStartScreen(),
+      onRetry:       () => resetGame(),
+    });
+
+    keyboard = new KeyboardController({
+      sidebar,
+      viewer,
+      onApply:       () => applySelected(),
+      onReset:       () => resetGame(),
+      onSelectGroup: () => goToStartScreen(),
+    });
+
+    document.getElementById('speed-select').addEventListener('change', e => {
+      animSpeed = parseFloat(e.target.value);
+    });
+    document.getElementById('btn-back').addEventListener('click', goToStartScreen);
+  }
+
+  await loadStructureAndSession(pg, mode);
+}
+
+// ── ゲーム → スタート画面 ─────────────────────────────────────
+function goToStartScreen() {
+  document.getElementById('screen-game').style.display  = 'none';
+  document.getElementById('screen-start').style.display = 'flex';
+}
+
+// ── 構造 + セッション読み込み ─────────────────────────────────
+async function loadStructureAndSession(pg, mode) {
+  document.getElementById('header-group').textContent = pg;
+  document.getElementById('header-mode').textContent  =
+    mode === 'real' ? '実在分子' : '架空配置';
+  viewer.hideAllSymmetry();
+
+  try {
+    const res    = await fetch(`${API}/structures/${pg}?mode=${mode}`);
+    if (!res.ok) throw new Error(await res.text());
+    const struct = await res.json();
+    viewer.loadStructure(struct);
+    updateStructInfo(struct);
+  } catch (e) {
+    showError('構造データの読み込みに失敗: ' + e.message); return;
+  }
+
+  try {
+    if (sessionId) await fetch(`${API}/sessions/${sessionId}`, { method: 'DELETE' });
+    const res  = await fetch(`${API}/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ group: pg }),
+    });
+    const data = await res.json();
+    sessionId  = data.session_id;
+    sidebar.updateFromSession(data);
+    sidebar.setAnimating(false);
+    keyboard.resetHint();
+  } catch (e) {
+    showError('セッション作成に失敗: ' + e.message);
+  }
+}
+
+// ── リセット ──────────────────────────────────────────────────
+async function resetGame() {
+  if (!sessionId) return;
+  const res  = await fetch(`${API}/sessions/${sessionId}/reset`, { method: 'POST' });
+  const data = await res.json();
+  keyboard.resetHint();
+  await loadStructureAndSession(data.initial_group, selectedMode);
+}
+
+// ── 商群の適用 ────────────────────────────────────────────────
+async function applySelected() {
+  if (!viewer || viewer.isAnimating) return;
+  const q = sidebar.getSelected();
+  if (!q || !sessionId) return;
+
+  sidebar.setAnimating(true);
+
+  viewer.playDecompositionAnimation(q.op_types ?? [], async () => {
+    try {
+      const res  = await fetch(`${API}/sessions/${sessionId}/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ normal_subgroup: q.normal_subgroup }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showError(data.error || '適用に失敗'); sidebar.setAnimating(false); return; }
+
+      sidebar.updateFromSession(data.session);
+      sidebar.setAnimating(false);
+
+      const curGroup = data.session.current_group?.name ?? data.session.initial_group;
+      document.getElementById('header-group').textContent = curGroup;
+
+      const structRes = await fetch(`${API}/structures/${data.step.to_group}?mode=${selectedMode}`);
+      if (structRes.ok) {
+        const struct = await structRes.json();
+        viewer.loadStructure(struct);
+        updateStructInfo(struct);
+      }
+    } catch (e) {
+      showError('適用に失敗: ' + e.message);
+      sidebar.setAnimating(false);
+    }
+  }, animSpeed);
+}
+
+function updateStructInfo(struct) {
+  document.getElementById('struct-info').innerHTML = `
+    <div>名称: <b>${struct.name || '架空配置'}</b></div>
+    <div>式: ${struct.formula || '—'}</div>
+    <div>点群: ${struct.point_group}</div>
+    <div>モード: ${struct.mode === 'real' ? '実在分子' : '架空配置'}</div>
+    <div>原子数: ${struct.atoms.length} / 結合数: ${struct.bonds.length}</div>
+    <div>対称要素: ${struct.symmetry_elements.length} 種</div>
+  `;
+}
+
+function showError(msg) {
+  document.getElementById('struct-info').innerHTML =
+    `<div class="error-msg">${msg.replace(/\n/g,'<br>')}</div>`;
+}
+
+// ── 起動 ─────────────────────────────────────────────────────
+initStartScreen().catch(e => {
+  document.getElementById('group-grid').innerHTML =
+    `<div class="error-msg">サーバーに接続できません。<br>python3 backend/api.py を起動してください。<br>${e.message}</div>`;
+});
+</script>
+</body>
+</html>

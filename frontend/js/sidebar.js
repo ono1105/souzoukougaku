@@ -25,9 +25,11 @@ const ALL_QUOTIENT_SYMBOLS = [
 export class Sidebar {
   /**
    * @param {object} opts
-   * @param {Element}  opts.progressEl      - #progress-path
-   * @param {Element}  opts.quotientListEl  - #quotient-list
-   * @param {Element}  opts.factorsListEl   - #factors-list
+   * @param {Element}  opts.progressEl        - #progress-path
+   * @param {Element}  opts.quotientListEl    - #quotient-list
+   * @param {Element}  opts.factorsListEl     - #factors-list
+   * @param {Function} opts.onNewGroup        - 「別の点群を試す」ボタン
+   * @param {Function} opts.onRetry           - 「同じ点群を別の順で試す」ボタン（Phase9追加）
    * @param {Element}  opts.applyBtnEl      - .apply-btn
    * @param {Function} opts.onQuotientSelect(idx) - 商群選択コールバック
    * @param {Function} opts.onApply()              - 適用コールバック
@@ -44,6 +46,8 @@ export class Sidebar {
     this._onApply    = opts.onApply;
     this._onHoverIn  = opts.onHoverEnter;
     this._onHoverOut = opts.onHoverLeave;
+    this._onNewGroup = opts.onNewGroup;
+    this._onRetry    = opts.onRetry;
 
     this._quotients    = [];   // available_quotients from API
     this._selectedIdx  = -1;
@@ -234,6 +238,22 @@ export class Sidebar {
         `<br><span style="font-size:10px;color:var(--text-dim)">` +
         path.join(' → ') + `</span>`;
       panel.appendChild(series);
+
+      // 完成後アクションボタン
+      const actions = document.createElement('div');
+      actions.className = 'complete-actions';
+      const btnNew = document.createElement('button');
+      btnNew.className = 'complete-action-btn primary';
+      btnNew.textContent = '別の点群を試す';
+      btnNew.addEventListener('click', () => this._onNewGroup?.());
+      const btnRetry = document.createElement('button');
+      btnRetry.className = 'complete-action-btn';
+      btnRetry.textContent = '同じ点群を別の順で';
+      btnRetry.addEventListener('click', () => this._onRetry?.());
+      actions.appendChild(btnNew);
+      actions.appendChild(btnRetry);
+      panel.appendChild(actions);
+
       this._factors.appendChild(panel);
       return;
     }

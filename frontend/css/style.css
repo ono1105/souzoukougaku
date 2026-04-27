@@ -208,7 +208,7 @@ html, body {
 
 /* 完成パネル */
 .complete-panel {
-  padding: 10px;
+  padding: 12px;
   border-radius: var(--radius);
   border: 1px solid var(--green-ok);
   background: rgba(68,204,136,0.08);
@@ -218,12 +218,121 @@ html, body {
   color: var(--green-ok); margin-bottom: 6px;
 }
 .complete-panel .complete-series {
-  font-size: 12px; color: var(--text-dim); line-height: 1.6;
+  font-size: 12px; color: var(--text-dim); line-height: 1.7;
 }
 .complete-panel .complete-series b { color: var(--text-main); }
+.complete-actions {
+  display: flex; flex-direction: column; gap: 6px; margin-top: 10px;
+}
+.complete-action-btn {
+  width: 100%; padding: 7px 10px;
+  border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--bg-panel2); color: var(--text-main);
+  font-size: 12px; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.complete-action-btn:hover { border-color: var(--accent); background: rgba(106,159,216,0.12); }
+.complete-action-btn.primary {
+  background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700;
+}
+.complete-action-btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 
 /* 空のメッセージ */
 .empty-msg { font-size: 11px; color: var(--text-dim); padding: 4px 0; }
+
+/* ══ スタート画面 ═════════════════════════════════════════════ */
+#screen-start {
+  display: flex; flex-direction: column; align-items: center;
+  min-height: 100vh; padding: 48px 24px 64px; gap: 36px;
+  background: var(--bg-deep);
+}
+.start-logo {
+  text-align: center;
+}
+.start-logo h1 {
+  font-size: 32px; font-weight: 800;
+  color: var(--accent); letter-spacing: -0.02em; margin-bottom: 4px;
+}
+.start-logo p {
+  font-size: 13px; color: var(--text-dim); letter-spacing: 0.04em;
+}
+
+/* モード選択 */
+.mode-toggle { display: flex; gap: 8px; }
+.mode-pill {
+  padding: 8px 24px; border-radius: 20px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--bg-panel2);
+  color: var(--text-dim); font-size: 13px; font-weight: 600;
+  transition: all 0.15s; user-select: none;
+}
+.mode-pill.active {
+  border-color: var(--accent); background: rgba(106,159,216,0.18);
+  color: var(--text-main);
+}
+.mode-pill:not(.active):hover { border-color: var(--text-dim); }
+
+/* 点群グリッド */
+.crystal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 16px;
+  max-width: 1100px; width: 100%;
+}
+.crystal-section {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.crystal-section h3 {
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-dim); margin-bottom: 2px;
+  padding-bottom: 4px; border-bottom: 1px solid var(--border);
+}
+.group-cards { display: flex; flex-direction: column; gap: 4px; }
+.group-card {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--bg-panel2);
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.group-card:hover { border-color: var(--accent-hover); }
+.group-card.selected {
+  border-color: var(--accent); background: rgba(106,159,216,0.18);
+}
+.group-card-name {
+  font-weight: 700; font-size: 14px; color: var(--text-main);
+}
+.group-card-order {
+  font-size: 10px; color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 10px; padding: 1px 6px;
+}
+
+/* 始めるボタン */
+.start-btn-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.start-btn {
+  padding: 14px 56px; font-size: 16px; font-weight: 800;
+  border-radius: 28px; border: none; cursor: pointer;
+  background: var(--accent); color: #fff;
+  transition: all 0.2s; letter-spacing: 0.03em;
+}
+.start-btn:disabled { opacity: 0.35; cursor: default; }
+.start-btn:not(:disabled):hover {
+  background: var(--accent-hover); transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(106,159,216,0.35);
+}
+.start-selection-info { font-size: 12px; color: var(--text-dim); min-height: 20px; }
+
+/* ゲーム画面 */
+#screen-game { display: none; }
+#screen-game.active { display: grid; }
+
+/* ヘッダーの「戻る」ボタン */
+.back-btn {
+  padding: 3px 10px; border-radius: 12px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text-dim); font-size: 12px; cursor: pointer;
+  transition: all 0.15s;
+}
+.back-btn:hover { border-color: var(--accent); color: var(--text-main); }
 
 /* ── Mode selector (viewer test page) ───────────────────── */
 #controls-bar {

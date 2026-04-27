@@ -29,7 +29,7 @@ CORS(app)
 
 @app.get('/')
 def index():
-    return send_from_directory(FRONTEND_DIR, 'viewer.html')
+    return send_from_directory(FRONTEND_DIR, 'index.html')
 
 
 def _err(message: str, status: int = 400):

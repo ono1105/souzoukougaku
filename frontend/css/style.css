@@ -265,6 +265,13 @@ html, body {
   background: var(--bg-panel2);
   color: var(--text-main);
   font-family: monospace;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+/* キーを押したときに一瞬光る */
+#footer kbd.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 /* ── Loading / Error ─────────────────────────────────────── */

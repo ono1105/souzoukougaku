@@ -77,16 +77,19 @@ export class Sidebar {
     this._refreshApplyBtn();
   }
 
-  /** 指定インデックスの商群を選択状態にする。 */
+  /**
+   * 指定インデックスの商群を選択状態にする。
+   * @returns {boolean} 選択に成功したか
+   */
   selectIndex(idx) {
-    if (idx < 0 || idx >= this._quotients.length) return;
+    if (idx < 0 || idx >= this._quotients.length) return false;
     this._selectedIdx = idx;
-    // ボタン表示を更新
     this._qList.querySelectorAll('.quotient-btn[data-valid="1"]').forEach((btn, i) => {
       btn.classList.toggle('selected', i === idx);
     });
     this._refreshApplyBtn();
     this._onSelect?.(idx);
+    return true;
   }
 
   /** 現在選択中の商群オブジェクトを返す。 */

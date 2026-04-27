@@ -107,8 +107,9 @@
 </div>
 
 <script type="module">
-import { CrystalViewer } from './js/viewer.js';
-import { Sidebar }       from './js/sidebar.js';
+import { CrystalViewer }      from './js/viewer.js';
+import { Sidebar }            from './js/sidebar.js';
+import { KeyboardController } from './js/keyboard.js';
 
 const API = 'http://localhost:5000/api';
 
@@ -140,6 +141,7 @@ const sidebar = new Sidebar({
 // ── セッション状態 ───────────────────────────────────────────
 let sessionId  = null;
 let animSpeed  = 1.0;
+let keyboard   = null;  // KeyboardController（後で初期化）
 
 // ── 点群リスト読み込み ────────────────────────────────────────
 async function loadGroupList() {
@@ -189,6 +191,7 @@ async function loadStructureAndSession(pg, mode) {
     sessionId  = data.session_id;
     sidebar.updateFromSession(data);
     sidebar.setAnimating(false);
+    keyboard?.resetHint();
   } catch (e) {
     showError('セッション作成に失敗: ' + e.message);
   }
@@ -246,25 +249,19 @@ function updateStructInfo(struct) {
   `;
 }
 
-// ── キーボード操作 ────────────────────────────────────────────
-document.addEventListener('keydown', async e => {
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-  const key = e.key;
-
-  if (key >= '1' && key <= '9') {
-    sidebar.selectIndex(parseInt(key) - 1);
-  } else if (key === 'Enter') {
-    await applySelected();
-  } else if (key === 'r' || key === 'R') {
+// ── キーボード操作（KeyboardController に委譲）────────────────
+keyboard = new KeyboardController({
+  sidebar,
+  viewer,
+  onApply: () => applySelected(),
+  onReset: async () => {
     if (!sessionId) return;
     const res  = await fetch(`${API}/sessions/${sessionId}/reset`, { method: 'POST' });
     const data = await res.json();
+    keyboard.resetHint();
     await loadStructureAndSession(data.initial_group, modeSelect.value);
-  } else if (key === 'h' || key === 'H') {
-    sidebar.selectIndex(0);  // ヒント: 最初の商群
-  } else if (key === 'n' || key === 'N') {
-    pgSelect.focus();
-  }
+  },
+  onSelectGroup: () => pgSelect.focus(),
 });
 
 // ── ボタン操作 ────────────────────────────────────────────────
